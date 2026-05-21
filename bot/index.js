@@ -156,9 +156,15 @@ function startBot() {
           // Extract the actual image prompt (remove "generate image of" etc.)
           const prompt = text.replace(/^(generate|create|make|draw|design)\s*(an?\s*)?(image|picture|photo|artwork|poster|banner|logo)\s*(of|about|for|showing)?\s*/i, '').trim() || text;
           
-          const { filepath, provider } = await imageGen.generateAndSave(prompt);
+          // Use generateImage (returns buffer directly) — avoids file path issues on Android/Termux
+          const { buffer, provider } = await imageGen.generateImage(prompt);
           const providerLabel = { stability: '⚡ Stability AI', fal: '🚀 fal.ai', pollinations: '🌸 Pollinations' }[provider] || provider;
-          await ctx.replyWithPhoto({ source: filepath }, { caption: `🎨 ${prompt}\n\n${providerLabel}` });
+          
+          // Send buffer directly — most reliable across all platforms
+          await ctx.replyWithPhoto(
+            { source: buffer, filename: 'image.png' },
+            { caption: `🎨 ${prompt}\n\n${providerLabel}` }
+          );
         } catch (imgErr) {
           console.error('Image gen error:', imgErr.message);
           await ctx.reply('❌ Could not generate the image. All providers failed.\n\nTry:\n• A simpler or shorter description\n• Trying again in a moment');
