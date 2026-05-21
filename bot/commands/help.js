@@ -1,0 +1,57 @@
+// /help — Formatted command reference organized by category
+
+module.exports = function (bot) {
+  bot.command('help', (ctx) => {
+    const helpText = [
+      '📖 <b>CommandCenter AI — Command Reference</b>',
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+      '',
+      '📇 <b>CRM — Contacts</b>',
+      '  /crm list — List recent contacts',
+      '  /crm add &lt;name&gt; &lt;phone&gt; — Quick add contact',
+      '  /crm search &lt;query&gt; — Search contacts',
+      '  /crm stats — CRM summary stats',
+      '',
+      '🎯 <b>Leads — Pipeline</b>',
+      '  /lead list — Leads grouped by stage',
+      '  /lead new &lt;title&gt; — Create new lead',
+      '  /lead pipeline — Pipeline summary',
+      '  /lead move &lt;id&gt; &lt;stage&gt; — Move lead to stage',
+      '',
+      '📝 <b>Content — Creation &amp; Publishing</b>',
+      '  /content create &lt;topic&gt; — Create content draft',
+      '  /content list — View drafts &amp; scheduled',
+      '  /content schedule &lt;id&gt; &lt;datetime&gt; — Schedule',
+      '  /content publish &lt;id&gt; — Publish now',
+      '',
+      '📱 <b>Social Media</b>',
+      '  /social post &lt;message&gt; — Quick post (FB)',
+      '  /social stats — Page statistics',
+      '  /social pages — List managed pages',
+      '',
+      '✅ <b>Tasks — To-Do &amp; Projects</b>',
+      '  /task add &lt;title&gt; — Quick add task',
+      '  /task list — Pending tasks',
+      '  /task done &lt;id&gt; — Mark as done',
+      '  /task priority &lt;id&gt; &lt;level&gt; — Set priority',
+      '',
+      '🤖 <b>Agents — AI Workforce</b>',
+      '  /agent status — All agent statuses',
+      '  /agent ask &lt;question&gt; — Ask the AI',
+      '  /agent logs — Recent agent activity',
+      '',
+      '📊 <b>Reports &amp; Analytics</b>',
+      '  /report daily — Daily activity summary',
+      '  /report weekly — Weekly analytics',
+      '',
+      '🔧 <b>System</b>',
+      '  /start — Welcome &amp; quick actions',
+      '  /help — This help message',
+      '',
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+      '💡 <i>Tip: Most commands support inline keyboard buttons for quick actions.</i>',
+    ].join('\n');
+
+    return ctx.replyWithHTML(helpText);
+  });
+};

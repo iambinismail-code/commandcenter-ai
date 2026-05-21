@@ -1,0 +1,24 @@
+{
+  "name": "commandcenter-ai",
+  "version": "1.0.0",
+  "description": "AI-Powered CRM/ERP with Telegram Bot, Facebook Integration & Multi-Agent System",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js",
+    "bot": "node bot/index.js",
+    "start:all": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "better-sqlite3": "^11.6.0",
+    "telegraf": "^4.16.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "node-cron": "^3.0.3",
+    "uuid": "^10.0.0"
+  },
+  "keywords": ["crm", "erp", "ai", "telegram-bot", "facebook", "agents"],
+  "author": "",
+  "license": "MIT"
+}
