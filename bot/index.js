@@ -70,6 +70,22 @@ function startBot() {
     const text = ctx.message.text;
     if (text.startsWith('/')) return;
 
+    // Intercept Reply Keyboard button clicks
+    const buttonMap = {
+      '📇 CRM Contacts': '/crm list',
+      '✅ My Tasks': '/task list',
+      '📝 Content Ideas': '/content list',
+      '🤖 Agent Status': '/agent status',
+      '📊 Daily Report': '/report daily',
+      '⚙️ Help': '/help',
+    };
+
+    if (buttonMap[text]) {
+      // Re-route the text to act as if the user typed the command
+      ctx.message.text = buttonMap[text];
+      return bot.handleUpdate(ctx.update);
+    }
+
     await ctx.sendChatAction('typing').catch(() => {});
 
     try {
