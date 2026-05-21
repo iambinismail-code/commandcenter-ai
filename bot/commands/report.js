@@ -1,4 +1,5 @@
 // /report — Daily and weekly report generation
+const { Markup } = require('telegraf');
 const db = require('../../server/config/database');
 
 module.exports = function (bot) {
@@ -19,6 +20,15 @@ module.exports = function (bot) {
           '<code>/report weekly</code> — This week\'s analytics'
         );
     }
+  });
+
+  bot.hears('📊 Daily Report', (ctx) => {
+    return reportDaily(ctx);
+  });
+
+  bot.action('action_weekly_report', (ctx) => {
+    ctx.answerCbQuery('Generating weekly report…');
+    return reportWeekly(ctx);
   });
 
   // ── Daily report ──
@@ -104,7 +114,11 @@ module.exports = function (bot) {
           : `💡 <i>Start your day by checking /task list</i>`,
       ].filter(Boolean).join('\n');
 
-      return ctx.replyWithHTML(msg);
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('📊 Generate Weekly Report', 'action_weekly_report')]
+      ]);
+
+      return ctx.replyWithHTML(msg, keyboard);
     } catch (err) {
       console.error('Daily report error:', err.message);
       return ctx.replyWithHTML('⚠️ Failed to generate daily report.');

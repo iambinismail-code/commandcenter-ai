@@ -1,6 +1,7 @@
 // Task Manager Agent — Task automation, prioritization, reminders
 const BaseAgent = require('./baseAgent');
 const db = require('../server/config/database');
+const { askFast } = require('../integrations/aiRouter');
 
 class TaskManager extends BaseAgent {
   constructor() {
@@ -191,6 +192,145 @@ Be specific and actionable. Keep it concise.`
       return { success: true, message: `✅ Task #${taskId} updated to "${status}".` };
     } catch (err) {
       return { success: false, message: `❌ Failed to update task: ${err.message}` };
+    }
+  }
+
+  /**
+   * Parse natural language command and execute task actions (create, complete, update priority, list).
+   * Falls back to suggestNextAction if the intent is not recognized.
+   * @param {string} input - User natural language text
+   * @param {string} [timeContext=''] - Current date/time context
+   * @returns {Promise<string>}
+   */
+  async processNaturalLanguage(input, timeContext = '') {
+    const SYSTEM_PROMPT_NL = `You are the Task Manager AI agent for CommandCenter AI.
+Your job is to parse natural language commands and extract structured action and data as a strict JSON object.
+No markdown (e.g. do NOT wrap in \`\`\`json ... \`\`\`), no explanations, just a single raw JSON object.
+
+Current date/time context: {timeContext}
+
+Supported actions:
+1. "create_task": Requires "title", optional "description", "priority" ("low", "medium", "high", "urgent"), "category" ("general", "content", "support", "sales"), "due_date" (resolve relative dates like "tomorrow" to YYYY-MM-DD format using current date/time context).
+   - Example input: "Remind me to check the contract by tomorrow morning"
+   - Expected JSON: {"action":"create_task", "title":"check the contract", "priority":"medium", "category":"general", "due_date":"YYYY-MM-DD"}
+
+2. "complete_task": Requires either "task_id" (number) or "title" (string for fuzzy search).
+   - Example input: "mark task 5 as done"
+   - Expected JSON: {"action":"complete_task", "task_id":5}
+   - Example input: "complete task check warehouse"
+   - Expected JSON: {"action":"complete_task", "title":"check warehouse"}
+
+3. "update_priority": Requires "task_id" (number) and "priority" ("low", "medium", "high", "urgent").
+   - Example input: "make task 3 urgent"
+   - Expected JSON: {"action":"update_priority", "task_id":3, "priority":"urgent"}
+
+4. "list_tasks": Request to see tasks.
+   - Example input: "show my pending tasks"
+   - Expected JSON: {"action":"list_tasks"}
+
+If you don't understand the action or it's not supported, return {"action":"unknown"}`;
+
+    try {
+      const prompt = SYSTEM_PROMPT_NL.replace('{timeContext}', timeContext || new Date().toISOString());
+      const response = await askFast(`${prompt}\n\nInput: "${input}"`, { temperature: 0.1 });
+      
+      const text = response.text || response.content || String(response);
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return this.suggestNextAction();
+      }
+
+      const data = JSON.parse(jsonMatch[0]);
+
+      if (data.action === 'create_task') {
+        if (!data.title) return 'Please provide a title for the task.';
+        const priority = data.priority || 'medium';
+        const category = data.category || 'general';
+        const dueDate = data.due_date || null;
+        const description = data.description || '';
+
+        const result = db.prepare(
+          'INSERT INTO tasks (title, description, category, priority, status, due_date, assigned_to) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        ).run(data.title, description, category, priority, 'todo', dueDate, 'user');
+        
+        const taskId = Number(result.lastInsertRowid);
+        this.log('createTaskNL', data.title, `Task #${taskId} created`, 'success');
+
+        let msg = `✅ Task <b>#${taskId}</b> created!\n`;
+        msg += `📌 Title: <b>${data.title}</b>\n`;
+        msg += `🔘 Priority: <b>${priority}</b> | Category: <b>${category}</b>\n`;
+        if (dueDate) {
+          msg += `📅 Due Date: <b>${dueDate}</b>\n`;
+        }
+        return msg;
+      }
+
+      if (data.action === 'complete_task') {
+        let task = null;
+        if (data.task_id) {
+          task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(data.task_id);
+        } else if (data.title) {
+          task = db.prepare('SELECT * FROM tasks WHERE title LIKE ? LIMIT 1').get(`%${data.title}%`);
+        }
+
+        if (!task) {
+          return `❌ Task "${data.task_id || data.title || 'unknown'}" not found.`;
+        }
+
+        db.prepare(
+          "UPDATE tasks SET status = 'done', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        ).run(task.id);
+        this.log('completeTaskNL', `Task #${task.id}`, 'Completed', 'success');
+
+        return `✅ Task <b>#${task.id}</b> ("<s>${task.title}</s>") completed! 🎉`;
+      }
+
+      if (data.action === 'update_priority') {
+        if (!data.task_id || !data.priority) {
+          return 'Please provide both task_id and priority.';
+        }
+
+        const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(data.task_id);
+        if (!task) {
+          return `❌ Task #${data.task_id} not found.`;
+        }
+
+        const validPriorities = ['low', 'medium', 'high', 'urgent'];
+        const priority = (data.priority || '').toLowerCase();
+        if (!validPriorities.includes(priority)) {
+          return `❌ Invalid priority "${priority}". Valid priorities: ${validPriorities.join(', ')}`;
+        }
+
+        db.prepare('UPDATE tasks SET priority = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(priority, task.id);
+        this.log('updatePriorityNL', `Task #${task.id}`, `Priority → ${priority}`, 'success');
+
+        return `🔴 Priority updated for Task <b>#${task.id}</b> ("${task.title}") to <b>${priority}</b>.`;
+      }
+
+      if (data.action === 'list_tasks') {
+        const tasks = db.prepare(
+          "SELECT id, title, priority, due_date FROM tasks WHERE status != 'done' ORDER BY CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 END, created_at DESC LIMIT 10"
+        ).all();
+
+        if (tasks.length === 0) {
+          return '✅ You have no pending tasks! 🎉';
+        }
+
+        const prioEmoji = { urgent: '🔴', high: '🟡', medium: '🔵', low: '⚪' };
+        let msg = '📋 <b>Your Pending Tasks</b>\n━━━━━━━━━━━━━━━━━━━\n\n';
+        tasks.forEach(t => {
+          const prio = prioEmoji[t.priority] || '🔵';
+          const due = t.due_date ? ` 📅 <i>${t.due_date}</i>` : '';
+          msg += `${prio} <b>#${t.id}</b> ${t.title}${due}\n`;
+        });
+        return msg;
+      }
+
+      // Action unknown or conversational request -> fall back to suggestion
+      return this.suggestNextAction();
+    } catch (err) {
+      console.error('taskManager NL error:', err.message);
+      return 'Failed to process task command.';
     }
   }
 }

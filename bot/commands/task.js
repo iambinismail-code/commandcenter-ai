@@ -29,6 +29,17 @@ module.exports = function (bot) {
     }
   });
 
+  bot.hears('✅ My Tasks', (ctx) => {
+    return taskList(ctx);
+  });
+
+  bot.action('action_add_task', (ctx) => {
+    ctx.answerCbQuery();
+    ctx.session = ctx.session || {};
+    ctx.session.wizard = { active: true, type: 'add_task', step: 'title', data: {} };
+    return ctx.replyWithHTML('✅ <b>Add New Task</b>\n\nWhat is the task title? (Type /cancel to abort)');
+  });
+
   // ── Add task ──
   async function taskAdd(ctx, title) {
     if (!title) {
@@ -73,8 +84,15 @@ module.exports = function (bot) {
       ).all();
 
       if (tasks.length === 0) {
+        const keyboard = Markup.inlineKeyboard([
+          [
+            Markup.button.callback('➕ Add Task', 'action_add_task'),
+            Markup.button.callback('🔄 Refresh List', 'task_list_all')
+          ]
+        ]);
         return ctx.replyWithHTML(
-          '✅ <b>Tasks</b>\n\nNo pending tasks! 🎉\n<code>/task add Buy groceries</code>'
+          '✅ <b>Tasks</b>\n\nNo pending tasks! 🎉\nCreate one using the button below:',
+          keyboard
         );
       }
 
@@ -99,6 +117,11 @@ module.exports = function (bot) {
       const buttons = tasks.slice(0, 5).map((t) => [
         Markup.button.callback(`✅ Done #${t.id}`, `task_done_${t.id}`),
         Markup.button.callback(`📌 ${t.title.substring(0, 15)}`, `task_view_${t.id}`),
+      ]);
+
+      buttons.push([
+        Markup.button.callback('➕ Add Task', 'action_add_task'),
+        Markup.button.callback('🔄 Refresh List', 'task_list_all')
       ]);
 
       return ctx.replyWithHTML(msg, Markup.inlineKeyboard(buttons));

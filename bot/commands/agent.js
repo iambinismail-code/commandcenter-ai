@@ -26,6 +26,17 @@ module.exports = function (bot) {
     }
   });
 
+  bot.hears('🤖 Agent Status', (ctx) => {
+    return agentStatus(ctx);
+  });
+
+  bot.action('action_ask_agent', (ctx) => {
+    ctx.answerCbQuery();
+    ctx.session = ctx.session || {};
+    ctx.session.wizard = { active: true, type: 'ask_agent', step: 'question', data: {} };
+    return ctx.replyWithHTML('🤖 <b>Ask AI Agent</b>\n\nWhat is your question or command for the AI? (Type /cancel to abort)');
+  });
+
   // ── Agent status ──
   async function agentStatus(ctx) {
     const agentEmoji = {
@@ -71,9 +82,12 @@ module.exports = function (bot) {
 
       const keyboard = Markup.inlineKeyboard([
         [
+          Markup.button.callback('💬 Ask Agent', 'action_ask_agent'),
           Markup.button.callback('📋 View Logs', 'agent_logs_btn'),
-          Markup.button.callback('🔄 Refresh', 'agent_refresh'),
         ],
+        [
+          Markup.button.callback('🔄 Refresh Status', 'agent_refresh')
+        ]
       ]);
 
       return ctx.replyWithHTML(msg, keyboard);

@@ -28,6 +28,17 @@ module.exports = function (bot) {
     }
   });
 
+  bot.hears('📝 Content Ideas', (ctx) => {
+    return contentList(ctx);
+  });
+
+  bot.action('action_add_content', (ctx) => {
+    ctx.answerCbQuery();
+    ctx.session = ctx.session || {};
+    ctx.session.wizard = { active: true, type: 'create_content', step: 'topic', data: {} };
+    return ctx.replyWithHTML('📝 <b>Create Content Draft</b>\n\nWhat is the topic or title of the post? (Type /cancel to abort)');
+  });
+
   // ── Create content draft ──
   async function contentCreate(ctx, topic) {
     if (!topic) {
@@ -75,8 +86,15 @@ module.exports = function (bot) {
       ).all();
 
       if (items.length === 0) {
+        const keyboard = Markup.inlineKeyboard([
+          [
+            Markup.button.callback('➕ Create Draft', 'action_add_content'),
+            Markup.button.callback('🔄 Refresh', 'content_list_all')
+          ]
+        ]);
         return ctx.replyWithHTML(
-          '📝 <b>Content</b>\n\nNo content yet.\n<code>/content create My First Post</code>'
+          '📝 <b>Content</b>\n\nNo content yet! Create your first draft:',
+          keyboard
         );
       }
 
@@ -94,6 +112,11 @@ module.exports = function (bot) {
 
       const buttons = items.slice(0, 5).map((c) => [
         Markup.button.callback(`👁 #${c.id} ${c.title.substring(0, 20)}`, `content_view_${c.id}`),
+      ]);
+
+      buttons.push([
+        Markup.button.callback('➕ Create Draft', 'action_add_content'),
+        Markup.button.callback('🔄 Refresh Library', 'content_list_all')
       ]);
 
       return ctx.replyWithHTML(msg, Markup.inlineKeyboard(buttons));

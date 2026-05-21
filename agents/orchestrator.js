@@ -28,6 +28,20 @@ function extractText(result) {
   if (typeof result === 'string') return result;
   if (result.text) return result.text;
   if (result.content) return result.content;
+  if (result.answer) return result.answer;
+  if (result.report) return result.report;
+  if (result.analysis) return result.analysis;
+  if (result.summary) return result.summary;
+  
+  // Intelligent scanner fallback: if it's a standard object, return the first long string property
+  if (typeof result === 'object') {
+    const values = Object.values(result);
+    for (const val of values) {
+      if (typeof val === 'string' && val.length > 5) {
+        return val;
+      }
+    }
+  }
   return String(result);
 }
 
@@ -84,7 +98,7 @@ async function processCommand(input, context = {}) {
     let response;
     switch (intent) {
       case 'crm':
-        response = await crmAgent.processNaturalLanguage(input);
+        response = await crmAgent.processNaturalLanguage(input, getTimeContext());
         break;
       case 'content':
         response = await contentCreator.generatePost(input, 'facebook');
@@ -100,7 +114,7 @@ async function processCommand(input, context = {}) {
         response = extractText(await analyticsAgent.generateDailyReport());
         break;
       case 'task':
-        response = extractText(await taskManager.suggestNextAction());
+        response = await taskManager.processNaturalLanguage(input, getTimeContext());
         break;
       case 'image':
         // Return special image intent — bot handler will generate the image

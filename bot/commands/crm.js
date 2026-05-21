@@ -24,6 +24,10 @@ module.exports = function (bot) {
     }
   });
 
+  bot.hears('📇 CRM Contacts', (ctx) => {
+    return crmMenu(ctx);
+  });
+
   bot.action('menu_crm', (ctx) => {
     ctx.answerCbQuery();
     return crmMenu(ctx);
@@ -36,6 +40,59 @@ module.exports = function (bot) {
     return ctx.replyWithHTML('📇 <b>Add New Contact</b>\n\nWhat is the contact\'s full name? (Type /cancel to abort)');
   });
 
+  bot.action('action_add_lead', (ctx) => {
+    ctx.answerCbQuery();
+    ctx.session = ctx.session || {};
+    ctx.session.wizard = { active: true, type: 'add_lead', step: 'title', data: {} };
+    return ctx.replyWithHTML('🎯 <b>Add New Lead</b>\n\nWhat is the lead\'s title or description? (Type /cancel to abort)');
+  });
+
+  bot.action('action_pipeline', (ctx) => {
+    ctx.answerCbQuery();
+    try {
+      const { LEAD_STAGES } = require('../../server/config/constants');
+      const leads = db.prepare(
+        'SELECT id, title, stage, priority, value FROM leads ORDER BY stage, created_at DESC'
+      ).all();
+
+      if (leads.length === 0) {
+        return ctx.replyWithHTML(
+          '🎯 <b>Leads</b>\n\nNo leads yet.\nUse the menu to add a lead!'
+        );
+      }
+
+      const stageEmoji = {
+        new: '🆕', contacted: '📞', qualified: '✅',
+        proposal: '📋', negotiation: '🤝', won: '🏆', lost: '❌',
+      };
+
+      // Group by stage
+      const grouped = {};
+      leads.forEach((l) => {
+        if (!grouped[l.stage]) grouped[l.stage] = [];
+        grouped[l.stage].push(l);
+      });
+
+      let msg = '🎯 <b>Leads by Stage</b>\n━━━━━━━━━━━━━━━━━━━\n\n';
+      for (const stage of LEAD_STAGES) {
+        const items = grouped[stage];
+        if (!items || items.length === 0) continue;
+        const emoji = stageEmoji[stage] || '📌';
+        msg += `${emoji} <b>${stage.toUpperCase()}</b> (${items.length})\n`;
+        items.forEach((l) => {
+          const val = l.value ? ` — ৳${l.value.toLocaleString()}` : '';
+          msg += `  #${l.id} ${l.title}${val}\n`;
+        });
+        msg += '\n';
+      }
+
+      return ctx.replyWithHTML(msg);
+    } catch (err) {
+      console.error('Lead list error:', err.message);
+      return ctx.replyWithHTML('⚠️ Failed to load leads.');
+    }
+  });
+
   // ── CRM Menu ──
   async function crmMenu(ctx) {
     const keyboard = Markup.inlineKeyboard([
@@ -44,7 +101,10 @@ module.exports = function (bot) {
         Markup.button.callback('➕ Add Contact', 'action_add_contact'),
       ],
       [
-        Markup.button.callback('📋 Pipeline', 'action_pipeline'),
+        Markup.button.callback('📋 Lead Pipeline', 'action_pipeline'),
+        Markup.button.callback('➕ Add Lead', 'action_add_lead'),
+      ],
+      [
         Markup.button.callback('📊 CRM Stats', 'action_crm_stats'),
       ]
     ]);

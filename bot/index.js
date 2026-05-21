@@ -46,30 +46,71 @@ function startBot() {
 
   // ── Middleware ──
   bot.use(session());
-  bot.use(authMiddleware);
 
-  // ── Intercept Keyboard Buttons ──
+  // 1. Global Debug Logger Middleware
+  bot.use(async (ctx, next) => {
+    const start = Date.now();
+    const updateType = ctx.updateType;
+    let details = '';
+    
+    if (ctx.message?.text) {
+      details = `Text: "${ctx.message.text}"`;
+    } else if (ctx.callbackQuery?.data) {
+      details = `Callback: "${ctx.callbackQuery.data}"`;
+    }
+
+    console.log(`[Bot Logger] 📥 Incoming ${updateType} from ${ctx.from?.first_name || 'unknown'} (ID: ${ctx.from?.id}) | ${details}`);
+    
+    await next();
+
+    const wizardState = ctx.session?.wizard ? `Wizard: ${ctx.session.wizard.type} (Step: ${ctx.session.wizard.step})` : 'Wizard: None';
+    const duration = Date.now() - start;
+    console.log(`[Bot Logger] 📤 Handled ${updateType} in ${duration}ms | ${wizardState}`);
+  });
+
+  // 2. Global Wizard Auto-Cancellation Middleware
   bot.use((ctx, next) => {
-    if (ctx.message && ctx.message.text) {
-      const buttonMap = {
-        '📇 CRM Contacts': '/crm menu',
-        '✅ My Tasks': '/task list',
-        '📝 Content Ideas': '/content list',
-        '🤖 Agent Status': '/agent status',
-        '📊 Daily Report': '/report daily',
-        '⚙️ Help': '/help',
-      };
-      if (buttonMap[ctx.message.text]) {
-        ctx.message.text = buttonMap[ctx.message.text];
+    if (ctx.session?.wizard?.active) {
+      if (ctx.message?.text) {
+        const text = ctx.message.text;
+        const mainMenuButtons = ['📇 CRM Contacts', '✅ My Tasks', '📝 Content Ideas', '🤖 Agent Status', '📊 Daily Report', '⚙️ Help'];
+        if (text.toLowerCase() === '/cancel' || text.toLowerCase() === 'cancel' || mainMenuButtons.includes(text) || text.startsWith('/')) {
+          console.log(`[Bot Session] 🧹 Clearing active wizard (${ctx.session.wizard.type}) due to menu interaction/command: "${text}"`);
+          ctx.session.wizard = null;
+        }
+      } else if (ctx.callbackQuery?.data) {
+        const data = ctx.callbackQuery.data;
+        // If they click any callback that is not wizard-specific, clear wizard
+        if (!data.startsWith('wizard_')) {
+          console.log(`[Bot Session] 🧹 Clearing active wizard (${ctx.session.wizard.type}) due to non-wizard callback query: "${data}"`);
+          ctx.session.wizard = null;
+        }
       }
     }
     return next();
   });
 
+  bot.use(authMiddleware);
+
+  // Note: Persistent keyboard buttons ('📇 CRM Contacts', etc.) are handled via native bot.hears() inside their respective command modules to avoid fragile text-mutating routing bugs.
+
   // ── Error handler ──
   bot.catch((err, ctx) => {
     console.error(`❌ Bot error for ${ctx.updateType}:`, err.message);
     ctx.reply('⚠️ Something went wrong. Please try again.').catch(() => {});
+  });
+
+  // ── Dedicated Cancel Commands ──
+  bot.command('cancel', (ctx) => {
+    ctx.session = ctx.session || {};
+    ctx.session.wizard = null;
+    return ctx.reply('❌ Cancelled.');
+  });
+
+  bot.hears(/^(cancel|\/cancel)$/i, (ctx) => {
+    ctx.session = ctx.session || {};
+    ctx.session.wizard = null;
+    return ctx.reply('❌ Cancelled.');
   });
 
   // ── Register Commands ──
@@ -90,22 +131,9 @@ function startBot() {
 
     // ── Check if user is in an active Wizard session ──
     if (ctx.session?.wizard?.active) {
-      const wizard = ctx.session.wizard;
-      
-      // Cancel wizard if user types /cancel
-      if (text.toLowerCase() === '/cancel') {
-        ctx.session.wizard = null;
-        return ctx.reply('❌ Cancelled.');
-      }
-
-      // Route based on wizard type
-      if (wizard.type === 'add_contact') {
-        const crmCmds = require('./commands/crm_wizards');
-        return crmCmds.handleAddContactStep(ctx, text);
-      }
-      
-      // If no matching wizard, clear it to prevent lock
-      ctx.session.wizard = null;
+      // Route to the central wizards module
+      const wizards = require('./commands/wizards');
+      return wizards.handleWizardStep(ctx, text);
     }
 
     await ctx.sendChatAction('typing').catch(() => {});
@@ -145,12 +173,38 @@ function startBot() {
         try { response = JSON.parse(response).text || response; } catch (e) {}
       }
 
-      // Send clean response (plain text, no heavy formatting)
-      await ctx.reply(response, { disable_web_page_preview: true });
+      // Send clean response (HTML formatted, with fallback)
+      try {
+        await ctx.replyWithHTML(response, { disable_web_page_preview: true });
+      } catch (htmlErr) {
+        console.warn('HTML reply failed, falling back to plain text:', htmlErr.message);
+        await ctx.reply(response, { disable_web_page_preview: true });
+      }
     } catch (err) {
       console.error('Chat error:', err.message);
       await ctx.reply('Something went wrong. Try again.');
     }
+  });
+
+  // ── Wizard Callback Query Actions ──
+  bot.action(/^wizard_task_prio_(.+)$/, (ctx) => {
+    const priority = ctx.match[1];
+    ctx.answerCbQuery(`Priority set to ${priority}`);
+    if (ctx.session?.wizard?.active && ctx.session.wizard.type === 'add_task') {
+      const wizards = require('./commands/wizards');
+      return wizards.saveTaskAndReply(ctx, ctx.session.wizard.data.title, priority);
+    }
+    return ctx.reply('Session expired or cancelled. Please try again.');
+  });
+
+  bot.action(/^wizard_content_plat_(.+)$/, (ctx) => {
+    const platform = ctx.match[1];
+    ctx.answerCbQuery(`Platform set to ${platform}`);
+    if (ctx.session?.wizard?.active && ctx.session.wizard.type === 'create_content') {
+      const wizards = require('./commands/wizards');
+      return wizards.saveContentAndReply(ctx, ctx.session.wizard.data.topic, platform);
+    }
+    return ctx.reply('Session expired or cancelled. Please try again.');
   });
 
   // ── Callback query router (inline keyboard actions) ──
@@ -160,7 +214,12 @@ function startBot() {
   });
 
   // ── Launch with polling ──
-  bot.launch({ dropPendingUpdates: true });
+  bot.launch({ dropPendingUpdates: true }).catch(err => {
+    console.error('⚠️  Failed to start Telegram bot:', err.message);
+    if (err.message.includes('Conflict')) {
+      console.error('👉 Conflict error: Another instance of this bot is already running elsewhere (e.g. on a VPS, phone, or another machine).');
+    }
+  });
   console.log('🤖 Telegram bot started (polling mode)');
 
   // ── Graceful shutdown ──
