@@ -48,6 +48,24 @@ function startBot() {
   bot.use(session());
   bot.use(authMiddleware);
 
+  // ── Intercept Keyboard Buttons ──
+  bot.use((ctx, next) => {
+    if (ctx.message && ctx.message.text) {
+      const buttonMap = {
+        '📇 CRM Contacts': '/crm list',
+        '✅ My Tasks': '/task list',
+        '📝 Content Ideas': '/content list',
+        '🤖 Agent Status': '/agent status',
+        '📊 Daily Report': '/report daily',
+        '⚙️ Help': '/help',
+      };
+      if (buttonMap[ctx.message.text]) {
+        ctx.message.text = buttonMap[ctx.message.text];
+      }
+    }
+    return next();
+  });
+
   // ── Error handler ──
   bot.catch((err, ctx) => {
     console.error(`❌ Bot error for ${ctx.updateType}:`, err.message);
@@ -69,22 +87,6 @@ function startBot() {
   bot.on('text', async (ctx) => {
     const text = ctx.message.text;
     if (text.startsWith('/')) return;
-
-    // Intercept Reply Keyboard button clicks
-    const buttonMap = {
-      '📇 CRM Contacts': '/crm list',
-      '✅ My Tasks': '/task list',
-      '📝 Content Ideas': '/content list',
-      '🤖 Agent Status': '/agent status',
-      '📊 Daily Report': '/report daily',
-      '⚙️ Help': '/help',
-    };
-
-    if (buttonMap[text]) {
-      // Re-route the text to act as if the user typed the command
-      ctx.message.text = buttonMap[text];
-      return bot.handleUpdate(ctx.update);
-    }
 
     await ctx.sendChatAction('typing').catch(() => {});
 
