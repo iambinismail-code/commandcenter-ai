@@ -52,7 +52,7 @@ function startBot() {
   bot.use((ctx, next) => {
     if (ctx.message && ctx.message.text) {
       const buttonMap = {
-        '📇 CRM Contacts': '/crm list',
+        '📇 CRM Contacts': '/crm menu',
         '✅ My Tasks': '/task list',
         '📝 Content Ideas': '/content list',
         '🤖 Agent Status': '/agent status',
@@ -87,6 +87,26 @@ function startBot() {
   bot.on('text', async (ctx) => {
     const text = ctx.message.text;
     if (text.startsWith('/')) return;
+
+    // ── Check if user is in an active Wizard session ──
+    if (ctx.session?.wizard?.active) {
+      const wizard = ctx.session.wizard;
+      
+      // Cancel wizard if user types /cancel
+      if (text.toLowerCase() === '/cancel') {
+        ctx.session.wizard = null;
+        return ctx.reply('❌ Cancelled.');
+      }
+
+      // Route based on wizard type
+      if (wizard.type === 'add_contact') {
+        const crmCmds = require('./commands/crm_wizards');
+        return crmCmds.handleAddContactStep(ctx, text);
+      }
+      
+      // If no matching wizard, clear it to prevent lock
+      ctx.session.wizard = null;
+    }
 
     await ctx.sendChatAction('typing').catch(() => {});
 

@@ -5,9 +5,11 @@ const contentCreator = require('./contentCreator');
 const socialMediaManager = require('./socialMediaManager');
 const customerSupport = require('./customerSupport');
 const analyticsAgent = require('./analyticsAgent');
+const crmAgent = require('./crmAgent');
 const taskManager = require('./taskManager');
 
 const CLASSIFY_PROMPT = `Classify the user's intent into ONE category:
+- crm: Add, list, or update contacts, leads, or deals
 - content: Creating posts, articles, captions, hashtags
 - social: Facebook posting, page stats, engagement
 - support: Customer questions, tickets
@@ -48,6 +50,7 @@ function getTimeContext() {
 async function classifyIntent(input) {
   const lower = input.toLowerCase();
 
+  if (/\b(contact|lead|deal|crm|pipeline)\b/.test(lower)) return 'crm';
   if (/\b(post|caption|article|hashtag|blog|write|content|create content)\b/.test(lower)) return 'content';
   if (/\b(facebook|fb|publish|schedule post|page stats|engagement|social)\b/.test(lower)) return 'social';
   if (/\b(customer|support|ticket|faq|complaint)\b/.test(lower)) return 'support';
@@ -59,7 +62,7 @@ async function classifyIntent(input) {
     const result = await ask(`${CLASSIFY_PROMPT}\n\nUser: "${input}"`, { temperature: 0.1, maxTokens: 20 });
     const text = extractText(result);
     const category = text.trim().toLowerCase().replace(/[^a-z_]/g, '');
-    if (['content', 'social', 'support', 'analytics', 'task', 'image', 'general'].includes(category)) {
+    if (['crm', 'content', 'social', 'support', 'analytics', 'task', 'image', 'general'].includes(category)) {
       return category;
     }
   } catch (e) {}
@@ -80,6 +83,9 @@ async function processCommand(input, context = {}) {
 
     let response;
     switch (intent) {
+      case 'crm':
+        response = await crmAgent.processNaturalLanguage(input);
+        break;
       case 'content':
         response = await contentCreator.generatePost(input, 'facebook');
         response = extractText(response.content || response);

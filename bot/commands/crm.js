@@ -10,8 +10,9 @@ module.exports = function (bot) {
     const subcommand = (args[0] || 'list').toLowerCase();
 
     switch (subcommand) {
-      case 'list':
-        return crmList(ctx);
+      case 'menu':
+      case 'list': // We'll map the persistent button to /crm menu instead of list
+        return crmMenu(ctx);
       case 'add':
         return crmAdd(ctx, args.slice(1));
       case 'search':
@@ -19,14 +20,47 @@ module.exports = function (bot) {
       case 'stats':
         return crmStats(ctx);
       default:
-        return ctx.replyWithHTML(
-          '📇 <b>CRM Commands</b>\n\n' +
-          '<code>/crm list</code> — Recent contacts\n' +
-          '<code>/crm add &lt;name&gt; &lt;phone&gt;</code> — Add contact\n' +
-          '<code>/crm search &lt;query&gt;</code> — Search\n' +
-          '<code>/crm stats</code> — Summary'
-        );
+        return crmMenu(ctx);
     }
+  });
+
+  bot.action('menu_crm', (ctx) => {
+    ctx.answerCbQuery();
+    return crmMenu(ctx);
+  });
+
+  bot.action('action_add_contact', (ctx) => {
+    ctx.answerCbQuery();
+    ctx.session = ctx.session || {};
+    ctx.session.wizard = { active: true, type: 'add_contact', step: 'name', data: {} };
+    return ctx.replyWithHTML('📇 <b>Add New Contact</b>\n\nWhat is the contact\'s full name? (Type /cancel to abort)');
+  });
+
+  // ── CRM Menu ──
+  async function crmMenu(ctx) {
+    const keyboard = Markup.inlineKeyboard([
+      [
+        Markup.button.callback('👥 List Contacts', 'action_list_contacts'),
+        Markup.button.callback('➕ Add Contact', 'action_add_contact'),
+      ],
+      [
+        Markup.button.callback('📋 Pipeline', 'action_pipeline'),
+        Markup.button.callback('📊 CRM Stats', 'action_crm_stats'),
+      ]
+    ]);
+
+    return ctx.replyWithHTML('📇 <b>CRM Dashboard</b>\n\nChoose an action below:', keyboard);
+  }
+
+  // ── Callbacks for Menu Actions ──
+  bot.action('action_list_contacts', (ctx) => {
+    ctx.answerCbQuery();
+    return crmList(ctx);
+  });
+
+  bot.action('action_crm_stats', (ctx) => {
+    ctx.answerCbQuery();
+    return crmStats(ctx);
   });
 
   // ── List recent contacts ──
