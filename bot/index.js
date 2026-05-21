@@ -148,7 +148,7 @@ function startBot() {
 
       // Handle image generation
       if (result.intent === 'image') {
-        await ctx.reply('🎨 Generating your image...');
+        const genMsg = await ctx.reply('🎨 Generating your image...');
         await ctx.sendChatAction('upload_photo').catch(() => {});
 
         try {
@@ -156,11 +156,12 @@ function startBot() {
           // Extract the actual image prompt (remove "generate image of" etc.)
           const prompt = text.replace(/^(generate|create|make|draw|design)\s*(an?\s*)?(image|picture|photo|artwork|poster|banner|logo)\s*(of|about|for|showing)?\s*/i, '').trim() || text;
           
-          const { filepath } = await imageGen.generateAndSave(prompt);
-          await ctx.replyWithPhoto({ source: filepath }, { caption: `🎨 ${prompt}` });
+          const { filepath, provider } = await imageGen.generateAndSave(prompt);
+          const providerLabel = { stability: '⚡ Stability AI', fal: '🚀 fal.ai', pollinations: '🌸 Pollinations' }[provider] || provider;
+          await ctx.replyWithPhoto({ source: filepath }, { caption: `🎨 ${prompt}\n\n${providerLabel}` });
         } catch (imgErr) {
           console.error('Image gen error:', imgErr.message);
-          await ctx.reply('Could not generate the image. Try again with a different description.');
+          await ctx.reply('❌ Could not generate the image. All providers failed.\n\nTry:\n• A simpler or shorter description\n• Trying again in a moment');
         }
         return;
       }

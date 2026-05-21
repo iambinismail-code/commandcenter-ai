@@ -22,6 +22,15 @@ const config = {
     baseUrl: 'https://api.groq.com/openai/v1',
   },
 
+  // Image Generation Providers
+  stabilityAi: {
+    apiKey: process.env.STABILITY_API_KEY || '',
+  },
+
+  falAi: {
+    apiKey: process.env.FAL_API_KEY || '',
+  },
+
   facebook: {
     appId: process.env.FB_APP_ID || '',
     appSecret: process.env.FB_APP_SECRET || '',
@@ -42,6 +51,7 @@ const config = {
 config.validate = function () {
   const warnings = [];
   if (!this.telegram.botToken) warnings.push('TELEGRAM_BOT_TOKEN not set — bot will not start');
+  if (!this.stabilityAi.apiKey && !this.falAi.apiKey) warnings.push('No image API keys set — will use Pollinations.ai (free fallback)');
   if (!this.gemini.apiKey) warnings.push('GEMINI_API_KEY not set — AI features limited');
   if (!this.groq.apiKey) warnings.push('GROQ_API_KEY not set — fast AI fallback unavailable');
   if (!this.facebook.pageAccessToken) warnings.push('FB_PAGE_ACCESS_TOKEN not set — Facebook features disabled');
