@@ -1,5 +1,5 @@
-// Database Configuration & Migrations (SQLite via better-sqlite3)
-const Database = require('better-sqlite3');
+// Database Configuration & Migrations (SQLite via built-in node:sqlite)
+const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 const fs = require('fs');
 const config = require('./env');
@@ -10,11 +10,11 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-const db = new Database(path.resolve(config.db.path));
+const db = new DatabaseSync(path.resolve(config.db.path));
 
 // Enable WAL mode for better concurrent read performance
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+db.exec('PRAGMA journal_mode = WAL');
+db.exec('PRAGMA foreign_keys = ON');
 
 // Run migrations
 function migrate() {
