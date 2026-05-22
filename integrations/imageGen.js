@@ -129,15 +129,19 @@ function falRequest(method, path, body, apiKey) {
 
 // ──────────────────────────────────────────────────────────
 // Provider 3: Pollinations.ai (100% free, no key ever)
+// Returns imageUrl so Telegram can download it directly
+// (avoids uploading large buffers from mobile networks)
 // ──────────────────────────────────────────────────────────
 async function generateWithPollinations(prompt, options = {}) {
   const seed = Math.floor(Math.random() * 999999);
   const encodedPrompt = encodeURIComponent(prompt);
-  const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&seed=${seed}&nologo=true&enhance=true`;
+  // Use 768px to keep file size manageable on mobile
+  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=768&height=768&seed=${seed}&nologo=true&enhance=true`;
 
-  const buffer = await downloadImageBuffer(url);
-  if (buffer.length < 1000) throw new Error('Pollinations returned empty image');
-  return { buffer, provider: 'pollinations' };
+  // Verify the URL works by making a HEAD-like request (download first few bytes)
+  await verifyImageUrl(imageUrl);
+  console.log(`[imageGen] Pollinations URL ready: ${imageUrl.substring(0, 80)}...`);
+  return { buffer: null, imageUrl, provider: 'pollinations' };
 }
 
 // ──────────────────────────────────────────────────────────
@@ -163,7 +167,35 @@ function downloadImageBuffer(url, redirectCount = 0) {
 }
 
 // ──────────────────────────────────────────────────────────
+// Verify image URL is reachable (follows redirects, checks status)
+// ──────────────────────────────────────────────────────────
+function verifyImageUrl(url, redirectCount = 0) {
+  return new Promise((resolve, reject) => {
+    if (redirectCount > 5) return reject(new Error('Too many redirects'));
+    const lib = url.startsWith('https') ? https : http;
+    const req = lib.get(url, { timeout: 30000 }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.destroy();
+        return verifyImageUrl(res.headers.location, redirectCount + 1).then(resolve).catch(reject);
+      }
+      if (res.statusCode !== 200) {
+        res.destroy();
+        return reject(new Error(`Image URL returned ${res.statusCode}`));
+      }
+      // Image is valid — destroy connection (we don't need to download it)
+      res.destroy();
+      resolve();
+    });
+    req.on('error', err => reject(new Error(`Image URL check failed: ${err.message}`)));
+    req.on('timeout', () => { req.destroy(); reject(new Error('Image URL verification timed out')); });
+  });
+}
+
+// ──────────────────────────────────────────────────────────
 // MAIN: Multi-provider router with automatic fallback
+// Returns { buffer, imageUrl, provider }
+//   - buffer: image data (for providers that return data)
+//   - imageUrl: direct URL (for Pollinations — Telegram downloads it)
 // ──────────────────────────────────────────────────────────
 async function generateImage(prompt, options = {}) {
   const providers = [
@@ -177,7 +209,8 @@ async function generateImage(prompt, options = {}) {
     try {
       console.log(`🎨 [imageGen] Trying ${provider.name}...`);
       const result = await provider.fn();
-      console.log(`✅ [imageGen] Success via ${provider.name} (${Math.round(result.buffer.length / 1024)}KB)`);
+      const sizeInfo = result.buffer ? `${Math.round(result.buffer.length / 1024)}KB` : 'URL-mode';
+      console.log(`✅ [imageGen] Success via ${provider.name} (${sizeInfo})`);
       return result;
     } catch (err) {
       console.warn(`⚠️  [imageGen] ${provider.name} failed: ${err.message}`);

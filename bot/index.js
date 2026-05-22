@@ -153,30 +153,28 @@ function startBot() {
 
         try {
           const imageGen = require('../integrations/imageGen');
-          const { Readable } = require('stream');
           // Extract the actual image prompt (remove "generate image of" etc.)
           const prompt = text.replace(/^(generate|create|make|draw|design)\s*(an?\s*)?(image|picture|photo|artwork|poster|banner|logo)\s*(of|about|for|showing)?\s*/i, '').trim() || text;
           
-          // Get image buffer
-          const { buffer, provider } = await imageGen.generateImage(prompt);
-          console.log(`[Bot] Image ready: ${buffer.length} bytes via ${provider}`);
-          
+          const { buffer, imageUrl, provider } = await imageGen.generateImage(prompt);
           const providerLabel = { stability: '⚡ Stability AI', fal: '🚀 fal.ai', pollinations: '🌸 Pollinations' }[provider] || provider;
           const caption = `🎨 ${prompt}\n\n${providerLabel}`;
           
-          // Method 1: Send as ReadableStream (most compatible with Telegraf)
-          try {
+          if (imageUrl) {
+            // URL mode: let Telegram's servers download the image (no upload from phone)
+            console.log(`[Bot] Sending image via URL: ${imageUrl.substring(0, 60)}...`);
+            await ctx.replyWithPhoto({ url: imageUrl }, { caption });
+            console.log('[Bot] Image sent via URL ✅');
+          } else if (buffer) {
+            // Buffer mode: upload from this device (for Stability/fal)
+            console.log(`[Bot] Uploading image buffer: ${buffer.length} bytes`);
+            const { Readable } = require('stream');
             const stream = Readable.from(buffer);
             await ctx.replyWithPhoto({ source: stream }, { caption });
-            console.log('[Bot] Image sent successfully via stream');
-          } catch (streamErr) {
-            console.warn('[Bot] Stream send failed:', streamErr.message, '— trying buffer directly...');
-            // Method 2: Send buffer directly
-            await ctx.replyWithPhoto({ source: buffer }, { caption });
-            console.log('[Bot] Image sent successfully via buffer');
+            console.log('[Bot] Image sent via buffer ✅');
           }
         } catch (imgErr) {
-          console.error('[Bot] Image gen/send error:', imgErr.message, imgErr.stack);
+          console.error('[Bot] Image error:', imgErr.message);
           await ctx.reply(`❌ Image failed: ${imgErr.message}\n\nTry again with a simpler description.`);
         }
         return;
