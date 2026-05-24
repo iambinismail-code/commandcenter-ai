@@ -159,20 +159,46 @@ function startBot() {
           const { buffer, imageUrl, provider } = await imageGen.generateImage(prompt);
           const providerLabel = { stability: '⚡ Stability AI', fal: '🚀 fal.ai', pollinations: '🌸 Pollinations' }[provider] || provider;
           const caption = `🎨 ${prompt}\n\n${providerLabel}`;
+          let sent = false;
           
-          if (imageUrl) {
-            // URL mode: let Telegram's servers download the image (no upload from phone)
-            console.log(`[Bot] Sending image via URL: ${imageUrl.substring(0, 60)}...`);
-            await ctx.replyWithPhoto({ url: imageUrl }, { caption });
-            console.log('[Bot] Image sent via URL ✅');
-          } else if (buffer) {
-            // Buffer mode: upload from this device (for Stability/fal)
-            console.log(`[Bot] Uploading image buffer: ${buffer.length} bytes`);
-            const { Readable } = require('stream');
-            const stream = Readable.from(buffer);
-            await ctx.replyWithPhoto({ source: stream }, { caption });
-            console.log('[Bot] Image sent via buffer ✅');
+          // Method 1: Send cached URL (Telegram fetches from Pollinations cache — fastest)
+          if (imageUrl && !sent) {
+            try {
+              console.log('[Bot] Try 1: Sending cached URL to Telegram...');
+              await ctx.replyWithPhoto(imageUrl, { caption });
+              console.log('[Bot] Image sent via cached URL ✅');
+              sent = true;
+            } catch (e) {
+              console.warn('[Bot] URL send failed:', e.message);
+            }
           }
+
+          // Method 2: Send buffer as stream
+          if (buffer && !sent) {
+            try {
+              console.log(`[Bot] Try 2: Uploading buffer (${Math.round(buffer.length / 1024)}KB)...`);
+              const { Readable } = require('stream');
+              await ctx.replyWithPhoto({ source: Readable.from(buffer) }, { caption });
+              console.log('[Bot] Image sent via stream ✅');
+              sent = true;
+            } catch (e) {
+              console.warn('[Bot] Stream send failed:', e.message);
+            }
+          }
+
+          // Method 3: Send buffer directly (last resort)
+          if (buffer && !sent) {
+            try {
+              console.log('[Bot] Try 3: Sending raw buffer...');
+              await ctx.replyWithPhoto({ source: buffer }, { caption });
+              console.log('[Bot] Image sent via raw buffer ✅');
+              sent = true;
+            } catch (e) {
+              console.warn('[Bot] Raw buffer failed:', e.message);
+            }
+          }
+          
+          if (!sent) throw new Error('All send methods failed');
         } catch (imgErr) {
           console.error('[Bot] Image error:', imgErr.message);
           await ctx.reply(`❌ Image failed: ${imgErr.message}\n\nTry again with a simpler description.`);

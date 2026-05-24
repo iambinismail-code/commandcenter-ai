@@ -129,19 +129,25 @@ function falRequest(method, path, body, apiKey) {
 
 // ──────────────────────────────────────────────────────────
 // Provider 3: Pollinations.ai (100% free, no key ever)
-// Returns imageUrl so Telegram can download it directly
-// (avoids uploading large buffers from mobile networks)
+// Strategy: fully download the image first (warms Pollinations'
+// cache), then return BOTH buffer + URL. The bot sends the URL
+// to Telegram — Telegram fetches the cached version instantly.
+// If URL send fails, bot falls back to uploading the buffer.
 // ──────────────────────────────────────────────────────────
 async function generateWithPollinations(prompt, options = {}) {
   const seed = Math.floor(Math.random() * 999999);
   const encodedPrompt = encodeURIComponent(prompt);
-  // Use 768px to keep file size manageable on mobile
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=768&height=768&seed=${seed}&nologo=true&enhance=true`;
+  // Use 512px — smaller file = faster download on mobile + faster Telegram upload fallback
+  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true&enhance=true`;
 
-  // Verify the URL works by making a HEAD-like request (download first few bytes)
-  await verifyImageUrl(imageUrl);
-  console.log(`[imageGen] Pollinations URL ready: ${imageUrl.substring(0, 80)}...`);
-  return { buffer: null, imageUrl, provider: 'pollinations' };
+  // Fully download image — this forces Pollinations to generate + cache it
+  console.log('[imageGen] Pollinations: downloading to warm cache...');
+  const buffer = await downloadImageBuffer(imageUrl);
+  if (buffer.length < 1000) throw new Error('Pollinations returned empty image');
+  console.log(`[imageGen] Pollinations: cached! (${Math.round(buffer.length / 1024)}KB)`);
+  
+  // Return both — bot tries URL first (Telegram fetches cached), falls back to buffer
+  return { buffer, imageUrl, provider: 'pollinations' };
 }
 
 // ──────────────────────────────────────────────────────────
